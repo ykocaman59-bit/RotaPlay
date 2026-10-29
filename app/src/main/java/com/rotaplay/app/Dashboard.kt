@@ -10,6 +10,7 @@ import android.location.LocationManager
 import android.media.AudioManager
 import android.net.Uri
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -80,14 +81,17 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private fun open(ctx: Context, intent: Intent): Boolean = try {
+internal fun open(ctx: Context, intent: Intent): Boolean = try {
     ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
 } catch (e: Exception) { false }
 
 @Composable
 fun Dashboard() {
-    val ctx = LocalContext.current
+    // 0 ana ekran, 1 uygulamalar, 2 harita, 3 telefon
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var mapDest by rememberSaveable { mutableStateOf("") }
+
+    BackHandler(enabled = tab != 0) { tab = 0 }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Bg, contentColor = Color.White) {
         Row(
@@ -105,17 +109,20 @@ fun Dashboard() {
                     DockButton(Icons.Rounded.Apps, tab == 1) { tab = 1 }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    DockButton(Icons.Rounded.Phone, false) {
-                        open(ctx, Intent(Intent.ACTION_DIAL))
-                    }
-                    DockButton(Icons.Rounded.Navigation, false) {
-                        open(ctx, Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0")))
-                    }
+                    DockButton(Icons.Rounded.Phone, tab == 3) { tab = 3 }
+                    DockButton(Icons.Rounded.Navigation, tab == 2) { tab = 2 }
                 }
             }
 
             // ---- İçerik ----
-            if (tab == 0) HomePage() else AppsPage()
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                when (tab) {
+                    0 -> HomePage(onRoute = { mapDest = it; tab = 2 })
+                    1 -> AppsPage()
+                    2 -> MapPage(mapDest)
+                    else -> DialerPage()
+                }
+            }
         }
     }
 }
@@ -135,9 +142,9 @@ private fun DockButton(icon: ImageVector, selected: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun HomePage() {
+private fun HomePage(onRoute: (String) -> Unit) {
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        NavCard(Modifier.weight(1.2f).fillMaxHeight())
+        NavCard(Modifier.weight(1.2f).fillMaxHeight(), onRoute)
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 ClockCard(Modifier.weight(1f).fillMaxHeight())
@@ -159,17 +166,11 @@ private fun CardBox(modifier: Modifier, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun NavCard(modifier: Modifier) {
+private fun NavCard(modifier: Modifier, onRoute: (String) -> Unit) {
     val ctx = LocalContext.current
     var dest by rememberSaveable { mutableStateOf("") }
 
-    fun go() {
-        val q = Uri.encode(dest)
-        val primary = if (dest.isBlank()) Uri.parse("geo:0,0") else Uri.parse("google.navigation:q=$q")
-        if (!open(ctx, Intent(Intent.ACTION_VIEW, primary))) {
-            open(ctx, Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=$q")))
-        }
-    }
+    fun go() { onRoute(dest.trim()) }
 
     Box(
         modifier
@@ -333,33 +334,5 @@ private fun MediaBtn(icon: ImageVector, dp: Int, filled: Boolean = false, onClic
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, null, tint = if (filled) Color(0xFF04202A) else Color.White, modifier = Modifier.size((dp * 0.55f).dp))
-    }
-}
-
-@Composable
-private fun AppsPage() {
-    val ctx = LocalContext.current
-    var apps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
-    LaunchedEffect(Unit) { apps = withContext(Dispatchers.IO) { loadApps(ctx) } }
-
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(110.dp),
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(apps, key = { it.pkg }) { app ->
-            Column(
-                Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable { launchApp(ctx, app.pkg) }
-                    .padding(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Image(app.icon, app.label, Modifier.size(64.dp))
-                Spacer(Modifier.height(6.dp))
-                Text(app.label, fontSize = 13.sp, maxLines = 1)
-            }
-        }
     }
 }
