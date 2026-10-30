@@ -3,6 +3,9 @@ package com.rotaplay.app
 import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.view.Surface
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
@@ -26,7 +29,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
@@ -101,15 +106,37 @@ fun loadApps(ctx: Context): List<AppEntry> {
         .sortedBy { it.label.lowercase() }
 }
 
-/** Uygulamayı RotaPlay'in YANINDA açar (bölünmüş ekran / serbest pencere destekleniyorsa). */
+private fun landscapeWanted(ctx: Context) =
+    ctx.getSharedPreferences("rota", Context.MODE_PRIVATE).getBoolean("land", false)
+
+/** Uygulamayı açar; yatay mod açıksa yatay zorlar ve üstte RotaPlay ev düğmesini gösterir. */
 fun launchApp(ctx: Context, pkg: String) {
     runCatching {
         val i = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
-        val dm = ctx.resources.displayMetrics
-        val opts = ActivityOptions.makeBasic()
-        opts.setLaunchBounds(Rect(dm.widthPixels * 35 / 100, 0, dm.widthPixels, dm.heightPixels))
-        ctx.startActivity(i, opts.toBundle())
+        if (landscapeWanted(ctx) && Settings.System.canWrite(ctx)) setSystemLandscape(ctx, true)
+        if (Settings.canDrawOverlays(ctx)) {
+            ctx.startService(Intent(ctx, DockOverlayService::class.java))
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(i)
+    }
+}
+
+/** Tüm sistemi (diğer uygulamalar dahil) yatay yapar / eski haline döndürür. */
+fun setSystemLandscape(ctx: Context, on: Boolean) {
+    if (!Settings.System.canWrite(ctx)) {
+        open(ctx, Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${ctx.packageName}")))
+        return
+    }
+    ctx.getSharedPreferences("rota", Context.MODE_PRIVATE).edit().putBoolean("land", on).apply()
+    runCatching {
+        val cr = ctx.contentResolver
+        if (on) {
+            Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0)
+            Settings.System.putInt(cr, Settings.System.USER_ROTATION, Surface.ROTATION_90)
+        } else {
+            Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 1)
+        }
     }
 }
 
@@ -150,6 +177,33 @@ fun AppsPage(onWeb: (String, String) -> Unit) {
         if (!showAll) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "title") {
                 Text("CarPlay uygulamaları", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "h_sys") {
+                Text("Araç modu", fontSize = 16.sp, color = Cyan, modifier = Modifier.padding(top = 4.dp))
+            }
+            item(key = "s_land") {
+                WebTile(WebApp("Her şey yatay", "", Icons.Rounded.ScreenRotation, Color(0xFF6366F1))) {
+                    setSystemLandscape(ctx, true)
+                }
+            }
+            item(key = "s_free") {
+                WebTile(WebApp("Yatay kilidi kaldır", "", Icons.Rounded.ScreenRotation, Color(0xFF64748B))) {
+                    setSystemLandscape(ctx, false)
+                }
+            }
+            item(key = "s_dock") {
+                WebTile(WebApp("Ev düğmesi", "", Icons.Rounded.Home, Color(0xFF14B8A6))) {
+                    if (Settings.canDrawOverlays(ctx)) {
+                        ctx.startService(Intent(ctx, DockOverlayService::class.java))
+                    } else {
+                        open(ctx, Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")))
+                    }
+                }
+            }
+            item(key = "s_home") {
+                WebTile(WebApp("Ana ekranım yap", "", Icons.Rounded.Home, Color(0xFF0EA5E9))) {
+                    open(ctx, Intent(Settings.ACTION_HOME_SETTINGS))
+                }
             }
             item(span = { GridItemSpan(maxLineSpan) }, key = "hint") {
                 Text(
