@@ -90,8 +90,10 @@ fun Dashboard() {
     // 0 ana ekran, 1 uygulamalar, 2 harita, 3 telefon
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var mapDest by rememberSaveable { mutableStateOf("") }
+    var webTitle by rememberSaveable { mutableStateOf("") }
+    var webUrl by rememberSaveable { mutableStateOf("") }
 
-    BackHandler(enabled = tab != 0) { tab = 0 }
+    BackHandler(enabled = tab != 0) { tab = if (tab == 4) 1 else 0 }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Bg, contentColor = Color.White) {
         Row(
@@ -106,7 +108,7 @@ fun Dashboard() {
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     DockButton(Icons.Rounded.Home, tab == 0) { tab = 0 }
-                    DockButton(Icons.Rounded.Apps, tab == 1) { tab = 1 }
+                    DockButton(Icons.Rounded.Apps, tab == 1 || tab == 4) { tab = 1 }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     DockButton(Icons.Rounded.Phone, tab == 3) { tab = 3 }
@@ -118,9 +120,10 @@ fun Dashboard() {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when (tab) {
                     0 -> HomePage(onRoute = { mapDest = it; tab = 2 })
-                    1 -> AppsPage()
+                    1 -> AppsPage(onWeb = { t, u -> webTitle = t; webUrl = u; tab = 4 })
                     2 -> MapPage(mapDest)
-                    else -> DialerPage()
+                    3 -> DialerPage()
+                    else -> WebAppPage(webTitle, webUrl, onClose = { tab = 1 })
                 }
             }
         }

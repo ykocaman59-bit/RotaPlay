@@ -1,9 +1,11 @@
 package com.rotaplay.app
 
+import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,7 +24,14 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Navigation
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,17 +101,29 @@ fun loadApps(ctx: Context): List<AppEntry> {
         .sortedBy { it.label.lowercase() }
 }
 
+/** Uygulamayı RotaPlay'in YANINDA açar (bölünmüş ekran / serbest pencere destekleniyorsa). */
 fun launchApp(ctx: Context, pkg: String) {
     runCatching {
-        ctx.packageManager.getLaunchIntentForPackage(pkg)?.let {
-            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            ctx.startActivity(it)
-        }
+        val i = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
+        val dm = ctx.resources.displayMetrics
+        val opts = ActivityOptions.makeBasic()
+        opts.setLaunchBounds(Rect(dm.widthPixels * 35 / 100, 0, dm.widthPixels, dm.heightPixels))
+        ctx.startActivity(i, opts.toBundle())
     }
 }
 
+data class WebApp(val title: String, val url: String, val icon: ImageVector, val color: Color)
+
+private val WEBS = listOf(
+    WebApp("YouTube Music", "https://music.youtube.com", Icons.Rounded.MusicNote, Color(0xFFE11D48)),
+    WebApp("Spotify", "https://open.spotify.com", Icons.Rounded.MusicNote, Color(0xFF1DB954)),
+    WebApp("YouTube", "https://www.youtube.com", Icons.Rounded.PlayArrow, Color(0xFFDC2626)),
+    WebApp("Waze Harita", "https://www.waze.com/live-map", Icons.Rounded.Navigation, Color(0xFF33CCFF))
+)
+
 @Composable
-fun AppsPage() {
+fun AppsPage(onWeb: (String, String) -> Unit) {
     val ctx = LocalContext.current
     var all by remember { mutableStateOf<List<AppEntry>?>(null) }
     var showAll by rememberSaveable { mutableStateOf(false) }
@@ -129,6 +150,19 @@ fun AppsPage() {
         if (!showAll) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "title") {
                 Text("CarPlay uygulamaları", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "hint") {
+                Text(
+                    "İpucu: RotaPlay'i bölünmüş ekranda aç, uygulamalar yanında açılır.",
+                    fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f)
+                )
+            }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "h_web") {
+                Text("Uygulama içinde aç", fontSize = 16.sp, color = Cyan, modifier = Modifier.padding(top = 4.dp))
+            }
+            items(WEBS, key = { "w_" + it.title }) { w -> WebTile(w) { onWeb(w.title, w.url) } }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "h_real") {
+                Text("Yüklü uygulamalar", fontSize = 16.sp, color = Cyan, modifier = Modifier.padding(top = 8.dp))
             }
             if (carApps.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "empty") {
@@ -182,5 +216,25 @@ private fun AppCell(app: AppEntry, onClick: () -> Unit) {
         Image(app.icon, app.label, Modifier.size(64.dp))
         Spacer(Modifier.height(6.dp))
         Text(app.label, fontSize = 13.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun WebTile(app: WebApp, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier.size(64.dp).clip(RoundedCornerShape(18.dp)).background(app.color),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(app.icon, null, tint = Color.White, modifier = Modifier.size(34.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(app.title, fontSize = 13.sp, maxLines = 1)
     }
 }
